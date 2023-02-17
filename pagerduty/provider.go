@@ -67,6 +67,7 @@ func Provider() *schema.Provider {
 			"pagerduty_incident_workflow":         dataSourcePagerDutyIncidentWorkflow(),
 			"pagerduty_custom_field":              dataSourcePagerDutyField(),
 			"pagerduty_custom_field_schema":       dataSourcePagerDutyFieldSchema(),
+			"pagerduty_license":                   dataSourcePagerDutyLicense(),
 		},
 
 		ResourcesMap: map[string]*schema.Resource{

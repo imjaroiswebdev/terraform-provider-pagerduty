@@ -105,6 +105,10 @@ func resourcePagerDutyUser() *schema.Resource {
 				Optional: true,
 				Default:  "Managed by Terraform",
 			},
+			"license": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 		},
 	}
 }
@@ -133,6 +137,13 @@ func buildUserStruct(d *schema.ResourceData) *pagerduty.User {
 
 	if attr, ok := d.GetOk("description"); ok {
 		user.Description = attr.(string)
+	}
+
+	if attr, ok := d.GetOk("license"); ok {
+		user.License = &pagerduty.LicenseReference{
+			ID:   attr.(string),
+			Type: "license_reference",
+		}
 	}
 	log.Printf("[DEBUG] buildUserStruct-- d: .%v. user:%v.", d.Get("name").(string), user.Name)
 	return user
@@ -195,6 +206,7 @@ func resourcePagerDutyUserRead(d *schema.ResourceData, meta interface{}) error {
 		}
 
 		d.Set("invitation_sent", user.InvitationSent)
+		// d.Set("license", user.License.ID)
 
 		return nil
 	})
