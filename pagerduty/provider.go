@@ -103,6 +103,7 @@ func Provider() *schema.Provider {
 			"pagerduty_event_orchestration_integration":               resourcePagerDutyEventOrchestrationIntegration(),
 			"pagerduty_event_orchestration_global":                    resourcePagerDutyEventOrchestrationPathGlobal(),
 			"pagerduty_event_orchestration_router":                    resourcePagerDutyEventOrchestrationPathRouter(),
+			"pagerduty_event_orchestration_router_rule":               resourcePagerDutyEventOrchestrationPathRouterRule(),
 			"pagerduty_event_orchestration_unrouted":                  resourcePagerDutyEventOrchestrationPathUnrouted(),
 			"pagerduty_event_orchestration_service":                   resourcePagerDutyEventOrchestrationPathService(),
 			"pagerduty_automation_actions_runner":                     resourcePagerDutyAutomationActionsRunner(),
