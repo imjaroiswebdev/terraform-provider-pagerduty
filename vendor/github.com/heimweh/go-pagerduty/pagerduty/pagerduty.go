@@ -338,7 +338,7 @@ func (c *Client) newRequestDoContext(ctx context.Context, method, url string, qr
 	}
 	req, err := c.newRequestContext(ctx, method, url, body)
 
-	trace := c.getHttpTrace()
+	trace := c.getHttpTrace(method, url)
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	if err != nil {
 		return nil, err
@@ -377,7 +377,7 @@ func (c *Client) newRequestDoOptionsContext(ctx context.Context, method, url str
 
 	resp, err := c.do(req, v)
 
-	trace := c.getHttpTrace()
+	trace := c.getHttpTrace(method, url)
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	if err != nil {
 		if respErr, ok := err.(*Error); ok && respErr.needToRetry {
@@ -718,7 +718,7 @@ func availableOauthScopes() []string {
 	}
 }
 
-func (c *Client) getHttpTrace() *httptrace.ClientTrace {
+func (c *Client) getHttpTrace(method, url string) *httptrace.ClientTrace {
 	var (
 		dnsStart, dnsEnd, connStart,
 		connEnd, connectStart, connectEnd,
@@ -733,9 +733,9 @@ func (c *Client) getHttpTrace() *httptrace.ClientTrace {
 			connEnd = time.Now()
 
 			if info.Reused {
-				log.Printf("[DEBUG] client trackid(%d) - connection reused", c.trackID)
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - connection reused", c.trackID, method, url)
 			} else {
-				log.Printf("[DEBUG] client trackid(%d) - time elapsed for Getting connection in micro seconds %d", c.trackID, connEnd.Sub(connStart).Microseconds())
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - time elapsed for Getting connection in micro seconds %d", c.trackID, method, url, connEnd.Sub(connStart).Microseconds())
 
 			}
 
@@ -747,10 +747,10 @@ func (c *Client) getHttpTrace() *httptrace.ClientTrace {
 		ConnectDone: func(network, addr string, err error) {
 			connectEnd = time.Now()
 			if err != nil {
-				log.Printf("[DEBUG] client trackid(%d) - error at ConnectDone %v", c.trackID, err)
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - error at ConnectDone %v", c.trackID, method, url, err)
 
 			} else {
-				log.Printf("[DEBUG] client trackid(%d) - time elapsed to  connect  in micro seconds %d", c.trackID, connectEnd.Sub(connectStart).Microseconds())
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - time elapsed to  connect  in micro seconds %d", c.trackID, method, url, connectEnd.Sub(connectStart).Microseconds())
 			}
 		},
 		DNSStart: func(info httptrace.DNSStartInfo) {
@@ -758,7 +758,7 @@ func (c *Client) getHttpTrace() *httptrace.ClientTrace {
 		},
 		DNSDone: func(info httptrace.DNSDoneInfo) {
 			dnsEnd = time.Now()
-			log.Printf("[DEBUG] client trackid(%d) - time elapsed to resolve DNS in micro seconds %d", c.trackID, dnsEnd.Sub(dnsStart).Microseconds())
+			log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - time elapsed to resolve DNS in micro seconds %d", c.trackID, method, url, dnsEnd.Sub(dnsStart).Microseconds())
 
 		},
 		TLSHandshakeStart: func() {
@@ -766,20 +766,20 @@ func (c *Client) getHttpTrace() *httptrace.ClientTrace {
 		},
 		TLSHandshakeDone: func(state tls.ConnectionState, err error) {
 			if err != nil {
-				log.Printf("[DEBUG] client trackid(%d) - tls error %v", c.trackID, err)
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - tls error %v", c.trackID, method, url, err)
 
 			} else {
 				tlsHandShakeEnd = time.Now()
-				log.Printf("[DEBUG] client trackid(%d) - time elapsed for TLS Handshake in micro seconds %d", c.trackID, tlsHandShakeEnd.Sub(tlsHandShakeStart).Microseconds())
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - time elapsed for TLS Handshake in micro seconds %d", c.trackID, method, url, tlsHandShakeEnd.Sub(tlsHandShakeStart).Microseconds())
 
 			}
 
 		},
 		PutIdleConn: func(err error) {
 			if err != nil {
-				log.Printf("[DEBUG] client trackid(%d) - error at putIdleConn %v", c.trackID, err)
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - error at putIdleConn %v", c.trackID, method, url, err)
 			} else {
-				log.Printf("[DEBUG] client trackid(%d) - put idle connection", c.trackID)
+				log.Printf("[DEBUG] client trackid(%d); method|url(%s|%s) - put idle connection", c.trackID, method, url)
 			}
 
 		},
