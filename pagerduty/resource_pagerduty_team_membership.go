@@ -209,14 +209,14 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 		return err
 	}
 
-	epsDissociatedFromTeam, err := dissociateEPsFromTeam(client, teamID, epsAssociatedToUser)
-	if err != nil {
-		return err
-	}
-
+	var isFoundErrRemovingUserFromTeam bool
 	// Retrying to give other resources (such as escalation policies) to delete
 	retryErr := retry.Retry(2*time.Minute, func() *retry.RetryError {
 		if _, err := client.Teams.RemoveUser(teamID, userID); err != nil {
+			if isErrCode(err, 400) && strings.Contains(err.Error(), "User cannot be removed as they belong to an escalation policy on this team") {
+				isFoundErrRemovingUserFromTeam = true
+				return retry.NonRetryableError(err)
+			}
 			if isErrCode(err, 400) {
 				return retry.RetryableError(err)
 			}
@@ -226,16 +226,20 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 		return nil
 	})
 	if retryErr != nil {
+		if isFoundErrRemovingUserFromTeam {
+			if len(epsAssociatedToUser) > 0 {
+				return fmt.Errorf(`User %q can't be removed from Team %q as they belong to an Escalation Policy on this team. Please take only one of the following remediation measures in order to unblock the Team Membership removal:
+    1. Remove the user from the following Escalation Policies: %v
+    2. Remove the Escalation Policies from the Team %q
+
+After completing one of the above given remediation options come back to continue with the destruction of Team Membership.`, userID, teamID, epsAssociatedToUser, teamID)
+			}
+		}
 		time.Sleep(2 * time.Second)
 		return retryErr
 	}
 
 	d.SetId("")
-
-	err = associateEPsBackToTeam(client, teamID, epsDissociatedFromTeam)
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -299,30 +303,6 @@ func dissociateEPsFromTeam(c *pagerduty.Client, teamID string, eps []string) ([]
 		log.Printf("[DEBUG] EscalationPolicy %s removed from team %s", ep, teamID)
 	}
 	return epsDissociatedFromTeam, nil
-}
-
-func associateEPsBackToTeam(c *pagerduty.Client, teamID string, eps []string) error {
-	for _, ep := range eps {
-		retryErr := retry.Retry(2*time.Minute, func() *retry.RetryError {
-			_, err := c.Teams.AddEscalationPolicy(teamID, ep)
-			if err != nil && !isErrCode(err, 404) {
-				time.Sleep(2 * time.Second)
-				return retry.RetryableError(err)
-			}
-			return nil
-		})
-		if retryErr != nil {
-			if !isErrCode(retryErr, 404) {
-				return fmt.Errorf("%w; Error while trying to associate back team %q to Escalation Policy %q. Resource succesfully deleted, but some team association couldn't be completed, so you need to run \"terraform plan -refresh-only\" and again \"terraform apply/destroy\" in order to remediate the drift", retryErr, teamID, ep)
-			} else {
-				// Skip Escaltion Policies not found. This happens when a destroy
-				// operation is requested and Escalation Policy is destroyed first.
-				continue
-			}
-		}
-		log.Printf("[DEBUG] EscalationPolicy %s added to team %s", ep, teamID)
-	}
-	return nil
 }
 
 func isTeamMember(user *pagerduty.User, teamID string) bool {
