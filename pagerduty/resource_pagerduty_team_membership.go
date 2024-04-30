@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -201,14 +202,6 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 		return err
 	}
 
-	log.Printf("[DEBUG] Removing user: %s from team: %s", userID, teamID)
-
-	// Extracting Escalation Policies ids where this team referenced
-	epsAssociatedToUser, err := extractEPsAssociatedToUser(client, userID)
-	if err != nil {
-		return err
-	}
-
 	var isFoundErrRemovingUserFromTeam bool
 	// Retrying to give other resources (such as escalation policies) to delete
 	retryErr := retry.Retry(2*time.Minute, func() *retry.RetryError {
@@ -225,16 +218,43 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 		}
 		return nil
 	})
-	if retryErr != nil {
-		if isFoundErrRemovingUserFromTeam {
-			if len(epsAssociatedToUser) > 0 {
-				return fmt.Errorf(`User %q can't be removed from Team %q as they belong to an Escalation Policy on this team. Please take only one of the following remediation measures in order to unblock the Team Membership removal:
-    1. Remove the user from the following Escalation Policies: %v
-    2. Remove the Escalation Policies from the Team %q
-
-After completing one of the above given remediation options come back to continue with the destruction of Team Membership.`, userID, teamID, epsAssociatedToUser, teamID)
-			}
+	if retryErr != nil && isFoundErrRemovingUserFromTeam {
+		// Extracting Escalation Policies ids where this team is referenced
+		epsAssociatedToUser, err := extractEPsAssociatedToUser(client, userID)
+		if err != nil {
+			return fmt.Errorf("%v; %w", retryErr, err)
 		}
+
+		if len(epsAssociatedToUser) > 0 {
+			pdURLData, err := url.Parse(epsAssociatedToUser[0])
+			if err != nil {
+				return fmt.Errorf("%v; %w", retryErr, err)
+			}
+
+			accountSubdomain := strings.Split(pdURLData.Hostname(), ".")[0]
+			var formatEPsList = func(eps []string) string {
+				var formated []string
+				for _, ep := range eps {
+					formated = append(formated, fmt.Sprintf("* %s", ep))
+				}
+				return strings.Join(formated, "\n")
+			}
+
+			return fmt.Errorf(`User %[1]q can't be removed from Team %[2]q as they belong to an Escalation Policy on this team.
+Please take only one of the following remediation measures in order to unblock the Team Membership removal:
+  1. Remove the user from the following Escalation Policies:
+    %[4]s
+  2. Remove the Escalation Policies from the Team https://%[3]s.pagerduty.com/teams/%[2]s
+
+After completing one of the above given remediation options come back to continue with the destruction of Team Membership.`,
+				userID,
+				teamID,
+				accountSubdomain,
+				formatEPsList(epsAssociatedToUser),
+			)
+		}
+	}
+	if retryErr != nil {
 		time.Sleep(2 * time.Second)
 		return retryErr
 	}
@@ -248,7 +268,7 @@ func buildEPsIdsList(l []*pagerduty.OnCall) []string {
 	eps := []string{}
 	for _, o := range l {
 		if o.EscalationPolicy != nil {
-			eps = append(eps, o.EscalationPolicy.ID)
+			eps = append(eps, o.EscalationPolicy.HTMLURL)
 		}
 	}
 	return unique(eps)
@@ -274,35 +294,6 @@ func extractEPsAssociatedToUser(c *pagerduty.Client, userID string) ([]string, e
 	}
 	epsAssociatedToUser := buildEPsIdsList(oncalls)
 	return epsAssociatedToUser, nil
-}
-
-func dissociateEPsFromTeam(c *pagerduty.Client, teamID string, eps []string) ([]string, error) {
-	epsDissociatedFromTeam := []string{}
-	for _, ep := range eps {
-		retryErr := retry.Retry(2*time.Minute, func() *retry.RetryError {
-			_, err := c.Teams.RemoveEscalationPolicy(teamID, ep)
-			if err != nil && !isErrCode(err, 404) {
-				time.Sleep(2 * time.Second)
-				return retry.RetryableError(err)
-			}
-			if err != nil && isErrCode(err, 404) {
-				return retry.NonRetryableError(err)
-			}
-			return nil
-		})
-		if retryErr != nil {
-			if !isErrCode(retryErr, 404) {
-				return nil, fmt.Errorf("%w; Error while trying to dissociate Team %q from Escalation Policy %q", retryErr, teamID, ep)
-			} else {
-				// Skip Escaltion Policies not found. This happens when a destroy
-				// operation is requested and Escalation Policy is destroyed first.
-				continue
-			}
-		}
-		epsDissociatedFromTeam = append(epsDissociatedFromTeam, ep)
-		log.Printf("[DEBUG] EscalationPolicy %s removed from team %s", ep, teamID)
-	}
-	return epsDissociatedFromTeam, nil
 }
 
 func isTeamMember(user *pagerduty.User, teamID string) bool {
