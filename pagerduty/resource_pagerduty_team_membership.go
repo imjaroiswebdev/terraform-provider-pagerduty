@@ -235,7 +235,7 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 			var formatEPsList = func(eps []string) string {
 				var formated []string
 				for _, ep := range eps {
-					formated = append(formated, fmt.Sprintf("* %s", ep))
+					formated = append(formated, fmt.Sprintf("\t* %s", ep))
 				}
 				return strings.Join(formated, "\n")
 			}
@@ -243,7 +243,7 @@ func resourcePagerDutyTeamMembershipDelete(d *schema.ResourceData, meta interfac
 			return fmt.Errorf(`User %[1]q can't be removed from Team %[2]q as they belong to an Escalation Policy on this team.
 Please take only one of the following remediation measures in order to unblock the Team Membership removal:
   1. Remove the user from the following Escalation Policies:
-    %[4]s
+%[4]s
   2. Remove the Escalation Policies from the Team https://%[3]s.pagerduty.com/teams/%[2]s
 
 After completing one of the above given remediation options come back to continue with the destruction of Team Membership.`,
